@@ -1,0 +1,43 @@
+{
+  "iteration": 3,
+  "summary": "4 acceptance criteria (mobile navbar simplification: Batch Baru/Clear moved out of navbar into the upload card next to Tambah file). Added 3 new browser checks + re-ran the pre-existing dialog-flow check and full backend suite as regression -- all passed, no bugs found.",
+  "passed": 4,
+  "failed": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [],
+  "checks": [
+    {
+      "criterion": "Navbar mobile responsif setelah tombol Clear dipindahkan",
+      "name": "mobile-navbar-no-overflow",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 390x844: app-header shows only 'AutoPlot Lab' + history-button, new-batch-button count in header = 0, document.scrollWidth <= 391 (no horizontal overflow). At 320x700 (min-width): header still visible, history-button visible, scrollWidth <= 321, header boundingBox width <= 320 (fits, no wrap-induced overflow)."
+    },
+    {
+      "criterion": "Tombol Batch Baru / Clear berada dekat area upload",
+      "name": "clear-button-near-upload-mobile",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 390x844: new-batch-button visible next to Tambah file inside the upload card (not header); boundingBox fully within viewport (x>=0, x+width<=391), not clipped."
+    },
+    {
+      "criterion": "Dialog Clear tetap berfungsi dari lokasi baru",
+      "name": "clear-button-near-upload-mobile",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Clicking the relocated new-batch-button opens clear-batch-dialog containing 'Bersihkan batch aktif', 'Bersihkan batch aktif dan semua riwayat', and 'Batal'; clicking the delete-all option shows a second confirmation screen 'Konfirmasi hapus semua riwayat' with 'Kembali'/'Ya, hapus semuanya' before any destructive action, matching the two-step confirmation contract. Also verified end-to-end via re-run of pre-existing batch-new-clear-dialog-flow.mjs (cancel keeps batch, clear-active resets workspace but keeps history, clear-active-history requires second confirm then empties history to 'Riwayat (0)') -- all passed on rerun."
+    },
+    {
+      "criterion": "Tampilan desktop tidak mengalami regresi kontrol",
+      "name": "desktop-header-upload-controls-layout",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 1280x800: header contains history-button, no new-batch-button in header; new-batch-button and Tambah file both visible in the upload card header row (vertical delta < 20px, i.e. same row, no broken/stacked layout); document.scrollWidth <= 1281 (no overflow)."
+    }
+  ],
+  "regression": {
+    "backend_suite": "12/12 pytest cases passed (test_tscheck_upload_filename_validation.py, test_tscheck_autoplot_no_conflict_full_coverage.py, test_tscheck_export_two_sheets.py)",
+    "browser_rerun": "batch-new-clear-dialog-flow re-ran by name only (persisted script, no changes) -- passed, confirming the Clear dialog's full mutation flow still works after the relocation"
+  }
+}

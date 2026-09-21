@@ -27,3 +27,7 @@ Belum ada autentikasi pada prototype ini.
 
 ## Deployment
 Satu repository mendukung dua project Vercel dengan root `frontend` dan `backend`. Frontend mempertahankan path relatif `/api` melalui Routing Middleware dan variabel `API_URL`. Detail ada di `DEPLOYMENT.md`.
+
+## Mobile navigation
+- Header mobile hanya memuat identitas AutoPlot Lab dan tombol `Riwayat (n)`.
+- Tombol `Batch Baru / Clear` berada di area kontrol upload bersama `Tambah file`, bukan di navbar, agar tidak menyebabkan overflow dan tetap dekat dengan awal batch.
