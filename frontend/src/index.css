@@ -2,13 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/outfit";
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: 'Outfit Variable', sans-serif;
+    --font-heading: 'Geist Variable', sans-serif;
     --font-sans: 'Geist Variable', sans-serif;
     --font-mono: 'JetBrains Mono Variable', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
@@ -52,14 +51,14 @@
 }
 
 :root {
-    --background: #090d16;
-    --foreground: #f8fafc;
-    --card: #111726;
-    --card-foreground: #f8fafc;
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
+    --background: #f3f6f9;
+    --foreground: #1e293b;
+    --card: #ffffff;
+    --card-foreground: #1e293b;
+    --popover: #ffffff;
+    --popover-foreground: #1e293b;
+    --primary: #134679;
+    --primary-foreground: #ffffff;
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -75,7 +74,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.25rem;
+    --radius: 0.3rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -127,26 +126,16 @@
   body {
     @apply bg-background text-foreground;
     min-width: 320px;
-    background-image: radial-gradient(circle at 80% 5%, rgba(59, 130, 246, 0.08), transparent 28rem);
+    background: #f3f6f9;
     }
   html {
     @apply font-sans;
     }
 }
 
-@keyframes scan-drift {
-  from { background-position: 0 0; }
-  to { background-position: 40px 40px; }
-}
-
-.scan-grid {
-  background-image:
-    linear-gradient(rgba(59, 130, 246, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
-  background-size: 40px 40px;
-  mask-image: linear-gradient(to right, black, transparent 80%);
-  animation: scan-drift 12s linear infinite;
-}
-
 html { scroll-behavior: smooth; }
-::selection { background: rgba(59, 130, 246, 0.35); color: white; }
+::selection { background: rgba(34, 109, 184, 0.25); color: #0f172a; }
+
+@layer components {
+  .section-block { @apply scroll-mt-20 border-t border-slate-200 py-9; }
+}

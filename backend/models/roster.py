@@ -36,6 +36,7 @@ class MemberSchedule(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     code: str
     division: str
+    generation: str = Field(pattern=r"^[0-9]{2}$")
     source_file: str
     confidence: float = Field(ge=0, le=1)
     notes: list[str] = Field(default_factory=list)
@@ -74,6 +75,7 @@ class PlotConfig(BaseModel):
 
 
 class PlotRequest(BaseModel):
+    batch_id: str
     schedules: list[MemberSchedule] = Field(min_length=1)
     config: PlotConfig
 
@@ -85,6 +87,7 @@ class PlotAssignment(BaseModel):
     end_time: str
     member_code: str
     division: str
+    generation: str
 
 
 class ValidationItem(BaseModel):
@@ -97,9 +100,14 @@ class PlotResponse(BaseModel):
     assignments: list[PlotAssignment]
     validations: list[ValidationItem]
     divisions: list[str]
+    required_divisions: list[str]
+    missing_divisions: list[str]
     coverage_by_day: dict[str, list[str]]
+    complete_days: list[DayName]
+    export_ready: bool
     generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class ExportRequest(BaseModel):
+    batch_id: str
     plot: PlotResponse

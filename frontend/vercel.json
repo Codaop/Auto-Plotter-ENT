@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "proxy": {
+    "entrypoint": "proxy.ts",
+    "matcher": "/api/:path*"
+  },
+  "functions": {
+    "proxy.ts": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

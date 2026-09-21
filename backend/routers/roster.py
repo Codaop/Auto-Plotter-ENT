@@ -2,7 +2,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -33,9 +33,9 @@ from models.roster import (
 
 router = APIRouter(prefix="/roster", tags=["roster"])
 FILE_PATTERN = re.compile(
-    r"^(?P<code>[A-Z0-9]{2,12})_(?P<division>[A-Z0-9][A-Z0-9_-]{1,31})\.(?P<ext>pdf|png|jpe?g)$",
-    re.IGNORECASE,
+    r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.(?P<ext>pdf|png|jpg|jpeg)$",
 )
+REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"]
 ALLOWED_MIME = {"application/pdf", "image/png", "image/jpeg"}
 MAX_FILE_BYTES = 12 * 1024 * 1024
 
@@ -61,7 +61,9 @@ def _extract_json(raw: str) -> dict:
     return json.loads(raw[start : end + 1])
 
 
-async def _extract_schedule(path: str, mime_type: str, code: str, division: str, filename: str) -> MemberSchedule:
+async def _extract_schedule(
+    path: str, mime_type: str, code: str, division: str, generation: str, filename: str
+) -> MemberSchedule:
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="Kunci layanan OCR belum dikonfigurasi")
@@ -79,7 +81,7 @@ async def _extract_schedule(path: str, mime_type: str, code: str, division: str,
         "Ekstrak semua jadwal kuliah dari lampiran. Kembalikan persis struktur: "
         '{"confidence":0.0,"notes":["..."],"classes":[{"day":"Senin","start_time":"08:00",'
         '"end_time":"10:00","course":"Nama Mata Kuliah"}]}. '
-        f"Identitas dari nama file adalah code={code}, division={division}; jangan ubah identitas tersebut."
+        f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
     )
     attachment = FileContentWithMimeType(mime_type=mime_type, file_path=path)
     pieces: list[str] = []
@@ -95,6 +97,7 @@ async def _extract_schedule(path: str, mime_type: str, code: str, division: str,
         return MemberSchedule(
             code=code,
             division=division,
+            generation=generation,
             source_file=filename,
             confidence=float(parsed.get("confidence", 0)),
             notes=[str(note) for note in parsed.get("notes", [])],
@@ -121,76 +124,70 @@ async def extract_documents(files: list[UploadFile] = File(...)):
         if not match:
             raise HTTPException(
                 status_code=422,
-                detail=f"Nama file {filename or '(tanpa nama)'} harus mengikuti KODENAMA_DIVISI.pdf/png/jpg",
+                detail=(
+                    f"Nama file {filename or '(tanpa nama)'} tidak valid. Gunakan pola "
+                    "KODENAMA_DIVISI_ANGKATAN, contoh VAL_CW_21.pdf"
+                ),
+            )
+        division = match.group("division")
+        if division not in REQUIRED_DIVISIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Divisi {division} tidak valid. Pilih salah satu: {', '.join(REQUIRED_DIVISIONS)}",
             )
         if upload.content_type not in ALLOWED_MIME:
             raise HTTPException(status_code=415, detail=f"Format {filename} tidak didukung")
-        content = await upload.read()
-        if len(content) > MAX_FILE_BYTES:
-            raise HTTPException(status_code=413, detail=f"{filename} melebihi batas 12 MB")
-
-        suffix = f".{match.group('ext').lower()}"
-        temp_path = ""
-        try:
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
-                temp_file.write(content)
-                temp_path = temp_file.name
+        suffix = f".{match.group('ext')}"
+        with tempfile.TemporaryDirectory(prefix="autoplot-") as temp_dir:
+            temp_path = str(Path(temp_dir) / f"source{suffix}")
+            total_bytes = 0
+            with open(temp_path, "wb") as temp_file:
+                while chunk := await upload.read(1024 * 1024):
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_FILE_BYTES:
+                        raise HTTPException(status_code=413, detail=f"{filename} melebihi batas 12 MB")
+                    temp_file.write(chunk)
             member = await _extract_schedule(
                 temp_path,
                 upload.content_type,
-                match.group("code").upper(),
-                match.group("division").upper(),
+                match.group("code"),
+                division,
+                match.group("generation"),
                 filename,
             )
             members.append(member)
             if member.confidence < 0.7:
                 warnings.append(f"Periksa ulang {filename}: confidence OCR rendah ({member.confidence:.0%})")
-        finally:
-            if temp_path:
-                Path(temp_path).unlink(missing_ok=True)
     return ExtractionResponse(members=members, warnings=warnings)
-
-
-@router.get("/sample", response_model=ExtractionResponse)
-async def sample_schedules():
-    sample = [
-        ("AHL", "FRONTEND", [("Senin", "08:00", "10:00", "Algoritma"), ("Rabu", "13:00", "15:00", "Basis Data")]),
-        ("NDA", "FRONTEND", [("Selasa", "09:00", "11:00", "Pemrograman Web"), ("Kamis", "14:00", "16:00", "Jaringan")]),
-        ("NFN", "BACKEND", [("Senin", "10:00", "12:00", "Sistem Operasi"), ("Jumat", "08:00", "10:00", "Statistika")]),
-        ("RKA", "BACKEND", [("Selasa", "13:00", "15:00", "Komputasi Awan"), ("Kamis", "08:00", "10:00", "Keamanan")]),
-        ("RZK", "UIUX", [("Rabu", "08:00", "10:00", "Interaksi Manusia Komputer"), ("Jumat", "13:00", "15:00", "Desain Produk")]),
-        ("DNI", "UIUX", [("Senin", "13:00", "15:00", "Riset Pengguna"), ("Kamis", "10:00", "12:00", "Prototyping")]),
-        ("KVN", "HARDWARE", [("Selasa", "08:00", "10:00", "Mikrokontroler"), ("Jumat", "10:00", "12:00", "Robotika")]),
-        ("BLK", "HARDWARE", [("Rabu", "10:00", "12:00", "Elektronika"), ("Kamis", "13:00", "15:00", "IoT")]),
-    ]
-    members = [
-        MemberSchedule(
-            code=code,
-            division=division,
-            source_file=f"{code}_{division}.pdf",
-            confidence=0.96,
-            notes=["Data contoh untuk demonstrasi alur review."],
-            classes=[ClassSlot(day=day, start_time=start, end_time=end, course=course) for day, start, end, course in classes],
-        )
-        for code, division, classes in sample
-    ]
-    return ExtractionResponse(members=members, warnings=[])
 
 
 @router.post("/plot", response_model=PlotResponse)
 async def generate_plot(payload: PlotRequest):
     divisions = sorted({schedule.division for schedule in payload.schedules})
+    missing_divisions = [division for division in REQUIRED_DIVISIONS if division not in divisions]
     usage = {schedule.id: 0 for schedule in payload.schedules}
     assignments: list[PlotAssignment] = []
     validations: list[ValidationItem] = []
     coverage_by_day: dict[str, list[str]] = {}
+    complete_days = []
     duration = payload.config.shift_duration_hours * 60
     opening = _minutes(payload.config.operating_start)
     closing = _minutes(payload.config.operating_end)
 
+    if missing_divisions:
+        validations.append(
+            ValidationItem(
+                level="error",
+                message=f"Batch belum lengkap. Divisi yang belum tersedia: {', '.join(missing_divisions)}.",
+            )
+        )
+
     for day in payload.config.active_days:
+        if missing_divisions:
+            coverage_by_day[day] = []
+            continue
         proposed: list[tuple[MemberSchedule, int]] = []
-        for division in divisions:
+        for division in REQUIRED_DIVISIONS:
             candidates = sorted(
                 [member for member in payload.schedules if member.division == division],
                 key=lambda member: (usage[member.id], member.code),
@@ -224,37 +221,54 @@ async def generate_plot(payload: PlotRequest):
                     end_time=_clock(start + duration),
                     member_code=member.code,
                     division=member.division,
+                    generation=member.generation,
                 )
             )
             usage[member.id] += 1
         coverage_by_day[day] = sorted(member.division for member, _ in proposed)
-        validations.append(
-            ValidationItem(level="ok", day=day, message=f"Semua {len(divisions)} divisi terwakili tanpa bentrok jadwal kuliah.")
-        )
+        complete_days.append(day)
 
-    if not assignments:
+    if complete_days:
+        validations.append(
+            ValidationItem(level="ok", message=f"{len(complete_days)} hari memenuhi delapan divisi tanpa bentrok jadwal kuliah.")
+        )
+    else:
         validations.append(ValidationItem(level="error", message="Tidak ada hari yang memenuhi seluruh aturan plotting."))
     return PlotResponse(
         assignments=assignments,
         validations=validations,
         divisions=divisions,
+        required_divisions=REQUIRED_DIVISIONS,
+        missing_divisions=missing_divisions,
         coverage_by_day=coverage_by_day,
+        complete_days=complete_days,
+        export_ready=bool(complete_days) and not missing_divisions,
     )
 
 
 @router.post("/export")
 async def export_plot(payload: ExportRequest):
+    if not payload.plot.export_ready or not payload.plot.complete_days:
+        raise HTTPException(status_code=409, detail="Plot belum memenuhi syarat ekspor delapan divisi")
     workbook = Workbook()
     main = workbook.active
     main.title = "Plotting Utama"
-    main.append(["Hari", "Mulai", "Selesai", "Kode Anggota", "Divisi"])
+    main.append(["ID Batch", "Hari", "Mulai", "Selesai", "Kode Anggota", "Divisi", "Angkatan"])
     for assignment in payload.plot.assignments:
-        main.append([assignment.day, assignment.start_time, assignment.end_time, assignment.member_code, assignment.division])
+        main.append([
+            payload.batch_id,
+            assignment.day,
+            assignment.start_time,
+            assignment.end_time,
+            assignment.member_code,
+            assignment.division,
+            assignment.generation,
+        ])
 
     validation = workbook.create_sheet("Validasi & Error")
-    validation.append(["Status", "Hari", "Pesan"])
+    validation.append(["ID Batch", "Status", "Hari", "Pesan"])
     for item in payload.plot.validations:
-        validation.append([item.level.upper(), item.day or "-", item.message])
+        validation.append([payload.batch_id, item.level.upper(), item.day or "-", item.message])
 
     header_fill = PatternFill("solid", fgColor="111827")
     header_font = Font(color="FFFFFF", bold=True)
@@ -272,7 +286,7 @@ async def export_plot(payload: ExportRequest):
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f"plot-absensi-{today_iso()}.xlsx"
+    filename = f"plot-absensi-{payload.batch_id}-{today_iso()}.xlsx"
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

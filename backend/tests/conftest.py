@@ -45,3 +45,26 @@ async def aclient():
 
 
 # --- app-specific fixtures below this line ---
+
+REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"]
+
+
+@pytest.fixture
+def sample_members():
+    """8 members, one per required division, angkatan 21, no class slots.
+
+    Mirrors the briefing seed fact: A01_RP_21.png .. A08_DG_21.png with no classes
+    yields 40 assignments under the default plotting config.
+    """
+    return [
+        {
+            "code": f"A{index + 1:02d}",
+            "division": division,
+            "generation": "21",
+            "source_file": f"A{index + 1:02d}_{division}_21.png",
+            "confidence": 0.95,
+            "notes": [],
+            "classes": [],
+        }
+        for index, division in enumerate(REQUIRED_DIVISIONS)
+    ]

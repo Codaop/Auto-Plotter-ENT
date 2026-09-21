@@ -1,0 +1,90 @@
+{
+  "iteration": 2,
+  "summary": "8 acceptance criteria (new/evolved spec vs iteration 1: divisions RP/FG/VG/CW/IL/WM/PK/DG, KODENAMA_DIVISI_ANGKATAN filenames, queue/cache/duplicate handling, history sheet, Batch Baru/Clear, clean admin UI). Rewrote 3 backend test files (old /api/roster/sample endpoint and old division set no longer exist) and rewrote/added 8 browser checks. 11 artifacts total (3 backend test files, 12 pytest cases combined, + 8 browser checks) -- all passed.",
+  "passed": 11,
+  "failed": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [
+    "Note: real Gemini OCR extraction on a validly-named upload was not re-exercised by the automated suite to avoid a live LLM call in CI/browser checks; briefing seed_facts already confirm VAL_CW_21.png -> 200 manually. Filename-contract behavior (valid pattern accepted, invalid pattern/division rejected) is covered by both backend tests and browser checks, and full-batch plot/export/review/history flows are exercised deterministically via seeded IndexedDB extraction-cache entries (explicitly allowed by seed_facts) instead of live OCR calls."
+  ],
+  "checks": [
+    {
+      "criterion": "Validasi nama file KODENAMA_DIVISI_ANGKATAN",
+      "name": "test_tscheck_upload_filename_validation.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/extract: old-format (no angkatan) -> 422 'KODENAMA_DIVISI_ANGKATAN'; extra segment -> 422; space in stem -> 422; nonnumeric generation -> 422; division outside RP/FG/VG/CW/IL/WM/PK/DG -> 422 listing allowed divisions; unsupported .gif extension -> 422; empty file list -> 400/422. 6/6 sub-cases passed."
+    },
+    {
+      "criterion": "Validasi nama file KODENAMA_DIVISI_ANGKATAN",
+      "name": "upload-rejects-invalid-filename",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Selected old-format, extra-segment, and invalid-division filenames -> selected-file-meta showed 'KODENAMA_DIVISI_ANGKATAN' / 'Divisi harus salah satu' before any extract call; then VAL_CW_21.pdf (spec example) parsed to Kode: VAL, Divisi: CW, Angkatan: 21 and was accepted into the queue as valid."
+    },
+    {
+      "criterion": "Antrian upload bertahap dan kontrol duplikat/cache",
+      "name": "upload-cache-duplicate-controls",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Seeded extraction-cache (IndexedDB) with a hash matching an uploaded buffer -> queue row showed 'Tersedia di cache' with no /api/roster/extract request fired; re-selecting the same filename showed duplicate-actions-1 with Pertahankan lama/Ganti; clicked Pertahankan lama -> duplicate row removed, original kept; clicked Gunakan cache -> member (code CCH1, division RP) appeared in schedule-review-list without any OCR call (extractCalled === false)."
+    },
+    {
+      "criterion": "Review jadwal dan angkatan",
+      "name": "review-edit-add-remove-slot",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Cache-seeded member (code REV1, angkatan 22, 2 class slots) loaded into review; edited day/start/end/course of slot 0 (persisted new values); added a slot (2->3), removed it (3->2), removed another original slot (2->1); clicked Simpan Koreksi -> toast 'Koreksi tersimpan di riwayat browser' confirmed batch save. Code/division/generation shown as identity badges (not editable), matching spec (only hari/jam/mata kuliah editable)."
+    },
+    {
+      "criterion": "Solver wajib delapan divisi tanpa assignment parsial",
+      "name": "test_tscheck_autoplot_no_conflict_full_coverage.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/plot with 8 sample members (RP..DG, angkatan 21, no classes) + default config -> 200, 40 assignments, full 8-division coverage every plotted day, export_ready=true; same batch minus CW member -> 200 but assignments=[], complete_days=[], missing_divisions=['CW'], export_ready=false, error validation present (no partial assignment); restricted 1-day/1h config -> 8 assignments confined to Sabtu 16:00-18:00."
+    },
+    {
+      "criterion": "Solver wajib delapan divisi tanpa assignment parsial",
+      "name": "plot-incomplete-batch-shows-empty-assignment",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Cache-seeded 3-division batch (RP/FG/VG) -> division-count '3/8 tersedia'; POST /api/roster/plot returned 200; plot-result showed plot-summary 'Belum ada hari...', assignment-row count 0, validation-list 'Batch belum lengkap', all 5 coverage-badges 'Belum memenuhi aturan'; export-excel-button disabled with blocker 'Kurang 5 divisi wajib'."
+    },
+    {
+      "criterion": "Batas ekspor dan spreadsheet",
+      "name": "test_tscheck_export_two_sheets.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Full 8-division plot -> POST /api/roster/export 200, spreadsheetml content-type; workbook sheetnames == ['Plotting Utama','Validasi & Error']; header row contains 'ID Batch' and 'Angkatan'; row 2 values equal batch_id and '21'; row counts match assignments/validations. Incomplete-division plot (export_ready=false) -> POST /api/roster/export 409."
+    },
+    {
+      "criterion": "Batas ekspor dan spreadsheet",
+      "name": "plot-full-batch-export-unlocks",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Cache-seeded full 8-division batch -> 40 assignment rows, plot-summary '5 hari memenuhi'; export-excel-button disabled with blocker 'belum disimpan sebagai koreksi' before Simpan Koreksi; after saving, button enabled; click -> POST /api/roster/export 200 spreadsheetml, browser download event fired with suggestedFilename matching plot-absensi-*.xlsx."
+    },
+    {
+      "criterion": "Riwayat IndexedDB dan cache XLSX",
+      "name": "history-sheet-persists-and-downloads",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Saved a live batch (own batchId) -> history-sheet shows 'Batch <id>' row; a directly-seeded history row with an XLSX Blob also visible; clicking its XLSX button triggered a download (suggestedFilename plot-absensi-TSCHECKHIST.xlsx) with zero /api/roster/export requests fired (Blob-cache reuse confirmed); deleting the live batch's own row removed only that row (count -1), never touching the seeded fixture row."
+    },
+    {
+      "criterion": "Batch Baru / Clear",
+      "name": "batch-new-clear-dialog-flow",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "new-batch-button always opens clear-batch-dialog; Batal keeps schedule-review-list intact; Bersihkan batch aktif resets queue/review to empty state while history count is unchanged; Bersihkan batch aktif dan semua riwayat requires a second confirmation screen ('Konfirmasi hapus semua riwayat') before confirm-clear-all-button empties all history (history-button shows 'Riwayat (0)', history-empty visible)."
+    },
+    {
+      "criterion": "Antarmuka administrasi terang dan ringkas",
+      "name": "ui-clean-admin-layout",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "app-header background-color rgb(19,70,121) (#134679); hero-description under 220 chars; workflow-steps renders exactly 5 horizontal steps; zero matches for sidebar/tech-stack/sample-data-button/load-sample-button/engine-badge testids and 'Powered by'/'Gemini' text; each of upload/rules/export sections exposes exactly one primary navy action button."
+    }
+  ]
+}

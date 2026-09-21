@@ -13,6 +13,7 @@ export interface MemberSchedule {
   id: string;
   code: string;
   division: string;
+  generation: string;
   source_file: string;
   confidence: number;
   notes: string[];
@@ -32,6 +33,7 @@ export interface PlotConfig {
 }
 
 export interface PlotRequest {
+  batch_id: string;
   schedules: MemberSchedule[];
   config: PlotConfig;
 }
@@ -43,6 +45,7 @@ export interface PlotAssignment {
   end_time: string;
   member_code: string;
   division: string;
+  generation: string;
 }
 
 export interface ValidationItem {
@@ -55,10 +58,55 @@ export interface PlotResponse {
   assignments: PlotAssignment[];
   validations: ValidationItem[];
   divisions: string[];
+  required_divisions: string[];
+  missing_divisions: string[];
   coverage_by_day: Record<string, string[]>;
+  complete_days: DayName[];
+  export_ready: boolean;
   generated_at: string;
 }
 
 export interface ExportRequest {
+  batch_id: string;
   plot: PlotResponse;
+}
+
+export type QueueStatus = "valid" | "invalid" | "duplicate" | "processing" | "done" | "error" | "cached";
+
+export interface ParsedFilename {
+  code: string;
+  division: string;
+  generation: string;
+  valid: boolean;
+  error?: string;
+}
+
+export interface QueuedFile {
+  id: string;
+  file: File;
+  hash: string;
+  parsed: ParsedFilename;
+  status: QueueStatus;
+  error?: string;
+  duplicateOf?: string;
+  cachedMember?: MemberSchedule;
+}
+
+export interface BatchHistory {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  members: MemberSchedule[];
+  config: PlotConfig;
+  plot: PlotResponse | null;
+  source_hashes: string[];
+  reviewed: boolean;
+  xlsx?: Blob;
+}
+
+export interface ExtractionCacheEntry {
+  hash: string;
+  member: MemberSchedule;
+  updated_at: string;
 }

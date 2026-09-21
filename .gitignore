@@ -86,9 +86,11 @@ android-sdk/
 
 # overlay black-box crash/user-report dumps — session data, never history
 **/.emergent/recordings/
+# Keep runtime secrets local; commit only documented deployment templates.
 .env
-.env.*
-*.env
+**/.env
+!.env.example
+!**/.env.example
 credentials.json
 *.key
 .credentials

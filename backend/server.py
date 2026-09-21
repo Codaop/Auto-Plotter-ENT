@@ -1,5 +1,3 @@
-import asyncio
-from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
@@ -12,21 +10,11 @@ from starlette.middleware.cors import CORSMiddleware
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-from lib.db import client, ensure_indexes
 from routers.roster import router as roster_router
 
 
-# Startup runs before the yield, shutdown after it. Add your own setup/teardown here.
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.index_task = asyncio.create_task(ensure_indexes())  # background: a big index build must not block boot
-    yield
-    client.close()
-
-
 # Create the main app without a prefix
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -41,7 +29,7 @@ api_router.include_router(roster_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    allow_credentials="*" not in os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
