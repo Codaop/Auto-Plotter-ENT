@@ -1,0 +1,90 @@
+{
+  "iteration": 1,
+  "summary": "11 check entries (3 backend test files covering 5 criterion-mappings, 6 browser checks covering 6 criterion-mappings) across all 7 acceptance criteria. All passed.",
+  "passed": 11,
+  "failed": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [
+    "Note: real Gemini OCR extraction on a validly-named upload was not re-exercised by the automated backend suite to avoid a live LLM call in CI; briefing seed_facts already confirm it was manually verified (TST_QA.png -> 200). Filename-contract behavior (valid pattern accepted for processing, invalid pattern rejected) is covered instead."
+  ],
+  "checks": [
+    {
+      "criterion": "Upload PDF/PNG/JPG dengan format nama KODENAMA_DIVISI dan ekstraksi OCR",
+      "name": "test_tscheck_upload_filename_validation.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/extract with tscheck-badname-upload.png -> 422 {detail: '...harus mengikuti KODENAMA_DIVISI...'}; .gif extension on valid-looking stem -> 422; empty file list -> 400/422."
+    },
+    {
+      "criterion": "Upload PDF/PNG/JPG dengan format nama KODENAMA_DIVISI dan ekstraksi OCR",
+      "name": "upload-rejects-invalid-filename",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Selected tscheck-invalid-name.pdf, clicked Ekstrak, backend returned 422, toast showed 'harus mengikuti KODENAMA_DIVISI' message, review section stayed empty (review-empty-state visible)."
+    },
+    {
+      "criterion": "Review dan koreksi hasil ekstraksi",
+      "name": "sample-load-populates-review",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Clicked load-sample-button, GET /api/roster/sample returned 8 members, schedule-review-list rendered 8 member-review-card items, section-trailing-02 shows '8 anggota'."
+    },
+    {
+      "criterion": "Review dan koreksi hasil ekstraksi",
+      "name": "review-edit-add-remove-slot",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Edited member-code-input-0 to TSC01, member-division-input-0 to QATEAM, changed class-day-select-0-0 to Jumat, edited start/end/course fields, added a class slot (count 2->3), removed it (3->2), then removed another original slot (2->1) -- all in-place edit/add/remove controls confirmed working."
+    },
+    {
+      "criterion": "AutoPlot hanya memakai slot kosong tanpa bentrok jadwal kuliah",
+      "name": "test_tscheck_autoplot_no_conflict_full_coverage.py::test_plot_default_config_no_conflict_and_full_coverage",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/plot with 8 sample members + default config (Senin-Jumat, 07:00-18:00, 2h) -> 200, 20 assignments; verified every assignment window has zero time overlap against that member's own ClassSlot list for the matching day."
+    },
+    {
+      "criterion": "Semua divisi terwakili pada hari plotting yang sama",
+      "name": "test_tscheck_autoplot_no_conflict_full_coverage.py::test_plot_restricted_active_days_and_short_window_changes_result",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Same 200 response: for every plotted day, coverage_by_day[day] set equals full divisions set {FRONTEND,BACKEND,UIUX,HARDWARE}; days without full coverage have no assignments (empty list), confirming no partial-day plotting."
+    },
+    {
+      "criterion": "Konfigurasi durasi, jam operasional, dan hari aktif",
+      "name": "test_tscheck_autoplot_no_conflict_full_coverage.py (restricted config)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/plot with active_days=['Sabtu'], operating 16:00-18:00, shift 1h -> 200; coverage_by_day keys == {'Sabtu'} only, every assignment falls within 16:00-18:00 with 60-minute duration."
+    },
+    {
+      "criterion": "Konfigurasi durasi, jam operasional, dan hari aktif",
+      "name": "config-active-days-limits-plot-preview",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Deactivated Rabu/Kamis/Jumat via active-day-button toggles, ran AutoPlot (waited for 200 on /api/roster/plot), assignment-day cells only contained Senin/Selasa, coverage-badges for indices 2-4 (inactive days) show 'Belum memenuhi aturan'."
+    },
+    {
+      "criterion": "Preview matrix dan validasi",
+      "name": "config-active-days-limits-plot-preview",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Same run: coverage-grid, assignment-table, and validation-list all visible with populated rows/badges after AutoPlot completed."
+    },
+    {
+      "criterion": "Ekspor spreadsheet dua sheet",
+      "name": "test_tscheck_export_two_sheets.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/roster/export with a real plot payload -> 200, content-type application/vnd...spreadsheetml.sheet; openpyxl load shows sheetnames == ['Plotting Utama', 'Validasi & Error'] with header row and row counts matching assignments/validations."
+    },
+    {
+      "criterion": "Ekspor spreadsheet dua sheet",
+      "name": "export-xlsx-download-triggers",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "After running AutoPlot, clicked export-excel-button; /api/roster/export responded 200 with spreadsheetml content-type; browser download event fired with suggestedFilename 'plot-absensi-lab.xlsx'."
+    }
+  ]
+}

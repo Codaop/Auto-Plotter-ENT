@@ -1,0 +1,153 @@
+{
+  "project_title": "AutoPlot Lab - Sistem Plotting Absensi & Roster Otomatis Anggota Laboratorium",
+  "app_type": "hybrid_fullstack",
+  "theme_strategy": {
+    "default_mode": "dark",
+    "support_toggle": true,
+    "rationale": "High-density shift plotting matrices, OCR document side-by-side inspections, and schedule grid heatmaps require contrast and low eye fatigue for lab managers working long hours."
+  },
+  "brand_identity": {
+    "archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST with Precision Lab aesthetics",
+    "tone": "Technical, High-Precision, Tactile, Efficient",
+    "tagline": "Ekstraksi PDF/Screenshot Bebas Bentrok, Plot Roster Lab Otomatis Sesuai Divisi"
+  },
+  "tech_stack_plan": {
+    "backend": {
+      "framework": "Python FastAPI",
+      "ocr_processing": "Tesseract OCR / EasyOCR / PyMuPDF (fitz) for PDF textual parsing + OpenCV for screenshot schedule table boundary detection",
+      "schedule_parser": "Custom Regex & Parsing Engine recognizing KODENAMA_DIVISI format (e.g. AHL_FRONTEND.pdf, NFN_BACKEND.png) and mapping weekly day/time blocks",
+      "plotting_engine": "Constraint Satisfaction Solver (OR-Tools / Greedy Slot Allocation Algorithm) ensuring (1) zero class schedule collision, (2) all divisions represented per active lab day, (3) equitable shift balance across members",
+      "spreadsheet_exporter": "OpenPyXL / Pandas multi-sheet generator creating 'Sheet 1: Plotting Utama Roster' and 'Sheet 2: Validasi & Error Log'"
+    },
+    "frontend": {
+      "framework": "React (Vite)",
+      "styling": "Tailwind CSS v4 + Custom Design Tokens",
+      "component_library": "Shadcn UI (Customized with sharp edges, high contrast, non-generic cards)",
+      "icons": "Lucide-React",
+      "state_management": "React Query (TanStack Query) + Context for active session & roster state",
+      "notifications": "Sonner toast system"
+    }
+  },
+  "color_palette": {
+    "mode": "Dark-Dominant with High-Contrast Precision Accents",
+    "base_dark": {
+      "bg_main": "#090D16",
+      "bg_card": "#111726",
+      "bg_subtle": "#1A2235",
+      "border_stroke": "rgba(255, 255, 255, 0.12)",
+      "border_active": "rgba(59, 130, 246, 0.5)"
+    },
+    "text_colors": {
+      "primary": "#F8FAFC",
+      "secondary": "#94A3B8",
+      "muted": "#64748B",
+      "accent_emerald": "#10B981",
+      "accent_amber": "#F59E0B",
+      "accent_rose": "#F43F5E",
+      "accent_indigo": "#6366F1"
+    },
+    "division_badges": {
+      "FRONTEND": {"bg": "rgba(59, 130, 246, 0.2)", "text": "#60A5FA", "border": "#3B82F6"},
+      "BACKEND": {"bg": "rgba(16, 185, 129, 0.2)", "text": "#34D399", "border": "#10B981"},
+      "UIUX": {"bg": "rgba(236, 72, 153, 0.2)", "text": "#F472B6", "border": "#EC4899"},
+      "HARDWARE": {"bg": "rgba(245, 158, 11, 0.2)", "text": "#FBBF24", "border": "#F59E0B"},
+      "DEVOPS": {"bg": "rgba(139, 92, 246, 0.2)", "text": "#A78BFA", "border": "#8B5CF6"},
+      "DATA_AI": {"bg": "rgba(6, 182, 212, 0.2)", "text": "#22D3EE", "border": "#06B6D4"}
+    },
+    "forbidden_colors": ["#7351B7", "#1B93A4"]
+  },
+  "typography": {
+    "font_families": {
+      "display_heading": "Cabinet Grotesk, Outfit, sans-serif",
+      "body_text": "Geist, Inter, sans-serif",
+      "mono_data": "JetBrains Mono, Source Code Pro, monospace"
+    },
+    "hierarchy": {
+      "h1_hero": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
+      "h2_section": "text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight",
+      "h3_card": "text-lg font-medium tracking-tight",
+      "body": "text-sm text-slate-300 leading-relaxed",
+      "mono_pill": "text-xs font-mono font-medium tracking-wider"
+    }
+  },
+  "layout_and_bento": {
+    "container_padding": "p-4 sm:p-6 lg:p-8",
+    "grid_gap": "gap-4 sm:gap-6",
+    "main_app_views": [
+      {
+        "tab_id": "upload_ocr",
+        "title": "1. Upload File & Ekstraksi OCR",
+        "description": "Drop multiple file PDF/PNG/JPG dengan penamaan format (KODENAMA_DIVISI), misal AHL_FRONTEND.pdf. Sistem otomatis mengurai jadwal kuliah."
+      },
+      {
+        "tab_id": "review_parsed",
+        "title": "2. Review & Koreksi Jadwal",
+        "description": "Inspeksi tabel manual dengan highlight slot sibuk (kuliah) vs slot kosong. Terdapat tombol edit langsung sebelum masuk solver."
+      },
+      {
+        "tab_id": "solver_config",
+        "title": "3. Engine Parameters & Rules",
+        "description": "Atur durasi shift lab (misal 2 jam/shift), kuota shift min/maks per divisi, dan pastikan rule 'Minimal 1 anggota tiap divisi per hari'."
+      },
+      {
+        "tab_id": "plot_preview",
+        "title": "4. Matrix Visual Matrix Plotting",
+        "description": "Grid interaktif Senin-Sabtu (07.00 - 18.00) dengan filter per divisi, per jam, per anggota, beserta status validasi coverage."
+      },
+      {
+        "tab_id": "export_center",
+        "title": "5. Ekspor Spreadsheet & Validation Sheet",
+        "description": "Unduh file .xlsx resmi dengan Sheet 1 (Plotingan Utama) & Sheet 2 (Laporan Constraint & Validasi Error)."
+      }
+    ]
+  },
+  "image_urls": [
+    {
+      "category": "lab_header_banner",
+      "url": "https://images.pexels.com/photos/5530483/pexels-photo-5530483.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Lab komputasi mahasiswa universitas saat pengerjaan proyek"
+    },
+    {
+      "category": "lab_workspace_session",
+      "url": "https://images.pexels.com/photos/5530478/pexels-photo-5530478.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Suasana lab teknologi modern saat shift piket"
+    },
+    {
+      "category": "member_avatar_1",
+      "url": "https://images.unsplash.com/photo-1740252117044-2af197eea287?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwyfHxzdHVkZW50JTIwcG9ydHJhaXQlMjBwcm9maWxlJTIwYXZhdGFyJTIwc29mdHdhcmUlMjBlbmdpbmVlcnxlbnwwfHx8fDE3ODk5OTM3NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Avatar Anggota Lab AHL - Divisi Frontend"
+    },
+    {
+      "category": "member_avatar_2",
+      "url": "https://images.unsplash.com/photo-1740252117012-bb53ad05e370?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHw0fHxzdHVkZW50JTIwcG9ydHJhaXQlMjBwcm9maWxlJTIwYXZhdGFyJTIwc29mdHdhcmUlMjBlbmdpbmVlcnxlbnwwfHx8fDE3ODk5OTM3NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Avatar Anggota Lab NFN - Divisi Backend"
+    },
+    {
+      "category": "member_avatar_3",
+      "url": "https://images.unsplash.com/photo-1740252117013-4fb21771e7ca?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwzfHxzdHVkZW50JTIwcG9ydHJhaXQlMjBwcm9maWxlJTIwYXZhdGFyJTIwc29mdHdhcmUlMjBlbmdpbmVlcnxlbnwwfHx8fDE3ODk5OTM3NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Avatar Anggota Lab RZK - Divisi UI/UX"
+    },
+    {
+      "category": "member_avatar_4",
+      "url": "https://images.unsplash.com/photo-1654110455429-cf322b40a906?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHxzdHVkZW50JTIwcG9ydHJhaXQlMjBwcm9maWxlJTIwYXZhdGFyJTIwc29mdHdhcmUlMjBlbmdpbmVlcnxlbnwwfHx8fDE3ODk5OTM3NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Avatar Anggota Lab DNI - Divisi Hardware"
+    }
+  ],
+  "component_path": "/app/frontend/src",
+  "instructions_to_main_agent": [
+    "1. IMPLEMENT RECOGNITION OF FILE NAMING PATTERN (KODENAMA_DIVISI): Parse filenames matching regex like `([A-Z0-9]+)_([A-Z0-9_]+)\\.(pdf|png|jpg|jpeg)` automatically when uploaded, populating member code and division.",
+    "2. BUILD OCR & SCHEDULE REVIEW SCREEN: Allow users to preview uploaded document image/PDF, view OCR extracted weekly class schedules (Senin-Sabtu), toggle status (Kuliah vs Kosong), edit course names, and confirm.",
+    "3. IMPLEMENT AUTOMATIC PLOTTING ALGORITHM: Plot lab shifts only during empty/free slots between classes. Enforce Rule: Every operating day MUST have at least one member from EVERY registered division.",
+    "4. INTERACTIVE MATRIX & PREVIEW ENGINE: Provide daily timeline view (07:00-18:00), division coverage indicator widgets (e.g. Frontend: 3 slots covered, Backend: 2 slots covered), conflict detection alerts, and manual drag/slot swap support.",
+    "5. DUAL-SHEET EXCEL/SPREADSHEET EXPORT: Generate Excel downloads with two tabs: Sheet 1 (Plotingan Utama Roster Absensi per Jam & Hari) and Sheet 2 (Sheet Validasi Coverage Divisi, Jam Kosong Unassigned, dan Error Log).",
+    "6. ADD PRELOADED SAMPLE DATA: Provide pre-filled sample files and batch uploads (e.g., AHL_FRONTEND, NFN_BACKEND, RZK_UIUX, DNI_HARDWARE, KVN_DEVOPS, BLK_DATAAI) for instant one-click demonstration of the auto-plotting engine.",
+    "7. ENSURE CRITICAL TESTIDS: Add data-testid to key buttons, dropzone, table cells, review forms, solver triggers, and spreadsheet download buttons."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Always set explicit hover text color (e.g. hover:bg-slate-800 hover:text-white).",
+    "Never use plain transparent background for headers, dialogs, or floating popovers; use dark blurred crystal backdrop (bg-slate-900/90 backdrop-blur-md).",
+    "Add data-testid in kebab-case to all interactive elements (e.g. data-testid='upload-dropzone-input', data-testid='run-autoplot-button', data-testid='export-excel-button').",
+    "Keep typography scalable and capped at text-5xl for headers.",
+    "Use JetBrains Mono or monospace font for codes (KODENAMA), shift time slots (08:00-10:00), and validation logs."
+  ]
+}
