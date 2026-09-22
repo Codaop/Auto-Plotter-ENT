@@ -1,3 +1,4 @@
+import json
 import re
 import tempfile
 from datetime import datetime
@@ -23,9 +24,12 @@ from models.roster import (
 
 
 router = APIRouter(prefix="/roster", tags=["roster"])
-FILE_PATTERN = re.compile(r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.txt$")
+FILE_PATTERN = re.compile(
+    r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.(?P<ext>txt|md|csv|json)$",
+    re.IGNORECASE,
+)
 REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"]
-ALLOWED_MIME = {"text/plain"}
+ALLOWED_MIME = {"text/plain", "text/markdown", "text/csv", "application/csv", "application/json"}
 MAX_FILE_BYTES = 12 * 1024 * 1024
 
 
@@ -62,7 +66,7 @@ _TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3])\s*[:.]\s*([0-5]\d)\b")
 def _member_from_text(text: str, code: str, division: str, generation: str, filename: str) -> MemberSchedule:
     classes: list[ClassSlot] = []
     for line in text.splitlines():
-        normalized = re.sub(r"\s+", " ", line.replace("|", " ")).strip()
+        normalized = re.sub(r"\s+", " ", re.sub(r"[#|,;]", " ", line)).strip()
         day_match = re.search(
             r"\b(Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b",
             normalized,
@@ -79,7 +83,7 @@ def _member_from_text(text: str, code: str, division: str, generation: str, file
         for token in (day_match.group(0), times[0].group(0), times[1].group(0)):
             course = course.replace(token, "", 1)
         course = re.sub(r"[-–—]", " ", course)
-        course = re.sub(r"\s+", " ", course).strip() or "Mata kuliah dari PDF"
+        course = re.sub(r"\s+", " ", course).strip() or "Mata kuliah dari file teks"
         classes.append(
             ClassSlot(
                 day=_DAY_ALIASES[day_match.group(1).lower()],
@@ -97,7 +101,7 @@ def _member_from_text(text: str, code: str, division: str, generation: str, file
         generation=generation,
         source_file=filename,
         confidence=0.85 if unique_classes else 0,
-        notes=[] if unique_classes else ["PDF tidak memiliki baris jadwal yang dapat dikenali."],
+        notes=[] if unique_classes else ["File teks tidak memiliki baris jadwal yang dapat dikenali."],
         classes=unique_classes,
     )
 
@@ -107,6 +111,13 @@ async def _extract_schedule(
 ) -> MemberSchedule:
     with open(path, "rb") as f:
         text = f.read().decode("utf-8-sig")
+    if filename.lower().endswith(".json"):
+        value = json.loads(text)
+        items = value if isinstance(value, list) else value.get("classes", [])
+        text = "\n".join(
+            f"{item.get('day', '')} | {item.get('start_time', '')} | {item.get('end_time', '')} | {item.get('course', '')}"
+            for item in items if isinstance(item, dict)
+        )
     member = _member_from_text(text, code, division, generation, filename)
     if not member.classes:
         raise HTTPException(status_code=422, detail="File teks tidak memiliki baris jadwal yang dikenali.")
@@ -130,7 +141,7 @@ async def extract_documents(files: list[UploadFile] = File(...)):
                 status_code=422,
                 detail=(
                     f"Nama file {filename or '(tanpa nama)'} tidak valid. Gunakan pola "
-                    "KODENAMA_DIVISI_ANGKATAN.txt, contoh VAL_CW_21.txt"
+                    "KODENAMA_DIVISI_ANGKATAN.(txt|md|csv), contoh VAL_CW_21.txt"
                 ),
             )
         division = match.group("division")
@@ -141,7 +152,7 @@ async def extract_documents(files: list[UploadFile] = File(...)):
             )
         if upload.content_type not in ALLOWED_MIME:
             raise HTTPException(status_code=415, detail=f"Format {filename} tidak didukung")
-        suffix = f".{match.group('ext')}"
+        suffix = f".{match.group('ext').lower()}"
         with tempfile.TemporaryDirectory(prefix="autoplot-") as temp_dir:
             temp_path = str(Path(temp_dir) / f"source{suffix}")
             total_bytes = 0

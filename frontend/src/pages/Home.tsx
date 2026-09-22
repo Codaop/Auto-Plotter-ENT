@@ -501,7 +501,7 @@ export default function Home() {
           <SectionHeading
             number="01"
             title="Upload jadwal"
-            description="Pola wajib KODENAMA_DIVISI_ANGKATAN.txt — contoh VAL_CW_21.txt. Isi satu jadwal per baris."
+            description="Pola wajib KODENAMA_DIVISI_ANGKATAN — dukung TXT, MD, CSV, dan JSON."
           />
           <form
             data-testid="upload-form"
@@ -520,7 +520,7 @@ export default function Home() {
                   data-testid="upload-limits"
                   className="mt-1 text-xs text-slate-500"
                 >
-                  TXT · Senin | 08:00 | 10:00 | Nama Mata Kuliah · maksimal 20
+                  TXT, MD, CSV, atau JSON · maksimal 20 file/pemilihan
                   file/pemilihan
                 </div>
               </div>
@@ -549,7 +549,7 @@ export default function Home() {
                     data-testid="upload-file-input"
                     className="sr-only"
                     type="file"
-                    accept=".txt"
+                    accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json"
                     multiple
                     onChange={(event) =>
                       void addFiles(Array.from(event.target.files ?? []))
