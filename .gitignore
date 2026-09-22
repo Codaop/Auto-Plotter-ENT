@@ -94,3 +94,4 @@ credentials.json
 .credentials
 .env.*
 *.env
+!.env.example
