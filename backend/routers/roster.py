@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from markitdown import MarkItDown
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -57,9 +58,88 @@ def _extract_json(raw: str) -> dict:
     return json.loads(raw[start : end + 1])
 
 
+_DAY_ALIASES = {
+    "senin": "Senin",
+    "selasa": "Selasa",
+    "rabu": "Rabu",
+    "kamis": "Kamis",
+    "jumat": "Jumat",
+    "sabtu": "Sabtu",
+    "monday": "Senin",
+    "tuesday": "Selasa",
+    "wednesday": "Rabu",
+    "thursday": "Kamis",
+    "friday": "Jumat",
+    "saturday": "Sabtu",
+}
+_TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3])\s*[:.]\s*([0-5]\d)\b")
+
+
+def _member_from_text(text: str, code: str, division: str, generation: str, filename: str) -> MemberSchedule:
+    classes: list[ClassSlot] = []
+    for line in text.splitlines():
+        normalized = re.sub(r"\s+", " ", line.replace("|", " ")).strip()
+        day_match = re.search(
+            r"\b(Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+        times = list(_TIME_PATTERN.finditer(normalized))
+        if not day_match or len(times) < 2:
+            continue
+        start_time = f"{int(times[0].group(1)):02d}:{times[0].group(2)}"
+        end_time = f"{int(times[1].group(1)):02d}:{times[1].group(2)}"
+        if start_time >= end_time:
+            continue
+        course = normalized
+        for token in (day_match.group(0), times[0].group(0), times[1].group(0)):
+            course = course.replace(token, "", 1)
+        course = re.sub(r"[-–—]", " ", course)
+        course = re.sub(r"\s+", " ", course).strip() or "Mata kuliah dari PDF"
+        classes.append(
+            ClassSlot(
+                day=_DAY_ALIASES[day_match.group(1).lower()],
+                start_time=start_time,
+                end_time=end_time,
+                course=course,
+            )
+        )
+    unique_classes = list({
+        (slot.day, slot.start_time, slot.end_time, slot.course): slot for slot in classes
+    }.values())
+    return MemberSchedule(
+        code=code,
+        division=division,
+        generation=generation,
+        source_file=filename,
+        confidence=0.85 if unique_classes else 0,
+        notes=[] if unique_classes else ["PDF tidak memiliki baris jadwal yang dapat dikenali."],
+        classes=unique_classes,
+    )
+
+
+def _convert_pdf(path: str) -> str:
+    return MarkItDown().convert(path).text_content
+
+
 async def _extract_schedule(
     path: str, mime_type: str, code: str, division: str, generation: str, filename: str
 ) -> MemberSchedule:
+    if mime_type == "application/pdf":
+        try:
+            text = await asyncio.to_thread(_convert_pdf, path)
+            member = _member_from_text(text, code, division, generation, filename)
+            if not member.classes:
+                raise HTTPException(
+                    status_code=422,
+                    detail="PDF berhasil dibaca, tetapi tidak memiliki text layer jadwal yang dikenali; gunakan PDF berbasis teks atau gambar PNG/JPG.",
+                )
+            return member
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"MarkItDown gagal membaca {filename}: {exc}") from exc
+
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="Kunci layanan OCR (Gemini API) belum dikonfigurasi")
