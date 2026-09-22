@@ -1,17 +1,11 @@
-import asyncio
-import base64
-import json
-import os
 import re
 import tempfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
-import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from markitdown import MarkItDown
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -29,11 +23,9 @@ from models.roster import (
 
 
 router = APIRouter(prefix="/roster", tags=["roster"])
-FILE_PATTERN = re.compile(
-    r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.(?P<ext>pdf|png|jpg|jpeg)$",
-)
+FILE_PATTERN = re.compile(r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.txt$")
 REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"]
-ALLOWED_MIME = {"application/pdf", "image/png", "image/jpeg"}
+ALLOWED_MIME = {"text/plain"}
 MAX_FILE_BYTES = 12 * 1024 * 1024
 
 
@@ -48,14 +40,6 @@ def _clock(total_minutes: int) -> str:
 
 def _overlaps(start: int, end: int, class_slot: ClassSlot) -> bool:
     return start < _minutes(class_slot.end_time) and end > _minutes(class_slot.start_time)
-
-
-def _extract_json(raw: str) -> dict:
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("respons OCR tidak berisi JSON")
-    return json.loads(raw[start : end + 1])
 
 
 _DAY_ALIASES = {
@@ -118,125 +102,15 @@ def _member_from_text(text: str, code: str, division: str, generation: str, file
     )
 
 
-def _convert_pdf(path: str) -> str:
-    return MarkItDown().convert(path).text_content
-
-
 async def _extract_schedule(
     path: str, mime_type: str, code: str, division: str, generation: str, filename: str
 ) -> MemberSchedule:
-    if mime_type == "application/pdf":
-        try:
-            text = await asyncio.to_thread(_convert_pdf, path)
-            member = _member_from_text(text, code, division, generation, filename)
-            if member.classes:
-                return member
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Kunci layanan OCR (Gemini API) belum dikonfigurasi")
-
-    # Read file as base64
     with open(path, "rb") as f:
-        file_data = base64.b64encode(f.read()).decode()
-
-    system_message = (
-        "Anda adalah mesin ekstraksi jadwal kuliah. Baca tabel pada file dan keluarkan JSON valid saja. "
-        "Hari yang diizinkan: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Normalisasikan waktu ke HH:MM. "
-        "Jangan membuat jadwal yang tidak tampak. Jika ragu, tambahkan penjelasan pada notes."
-    )
-    prompt = (
-        "Ekstrak semua jadwal kuliah dari lampiran. Kembalikan persis struktur: "
-        '{"confidence":0.0,"notes":["..."],"classes":[{"day":"Senin","start_time":"08:00",'
-        '"end_time":"10:00","course":"Nama Mata Kuliah"}]}. '
-        f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
-    )
-
-    models = [
-        model.strip()
-        for model in os.environ.get(
-            "GEMINI_OCR_MODELS", "gemini-3.5-flash-lite,gemini-2.5-flash-lite"
-        ).split(",")
-        if model.strip()
-    ]
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": f"{system_message}\n\n{prompt}"},
-                {"inline_data": {"mime_type": mime_type, "data": file_data}}
-            ]
-        }],
-        "generationConfig": {
-            "temperature": 0.1,
-            "maxOutputTokens": 4096,
-            "responseMimeType": "application/json",
-        }
-    }
-
-    try:
-        data = None
-        last_error = ""
-        async with httpx.AsyncClient(timeout=105.0) as client:
-            for model in models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-                for attempt in range(2):
-                    response = await client.post(
-                        url,
-                        headers={"x-goog-api-key": api_key},
-                        json=payload,
-                    )
-                    if response.status_code in {429, 500, 503}:
-                        last_error = f"{model}: {response.status_code} - {response.text}"
-                        if attempt == 0:
-                            await asyncio.sleep(2)
-                            continue
-                        break
-                    if response.status_code >= 400:
-                        last_error = f"{model}: {response.status_code} - {response.text}"
-                        break
-                    data = response.json()
-                    break
-                if data is not None:
-                    break
-
-        if data is None:
-            raise HTTPException(status_code=503, detail=f"Semua model OCR sedang tidak tersedia: {last_error}")
-
-        # Extract text from Gemini response
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise HTTPException(status_code=502, detail="Tidak ada respons dari Gemini API")
-
-        content = candidates[0].get("content", {})
-        parts = content.get("parts", [])
-        if not parts:
-            raise HTTPException(status_code=502, detail="Respons Gemini kosong")
-
-        text = "".join(str(part.get("text", "")) for part in parts)
-        if not text:
-            raise HTTPException(status_code=502, detail="Respons Gemini tidak berisi teks")
-
-        parsed = _extract_json(text)
-        classes = [ClassSlot(**item) for item in parsed.get("classes", [])]
-        return MemberSchedule(
-            code=code,
-            division=division,
-            generation=generation,
-            source_file=filename,
-            confidence=float(parsed.get("confidence", 0)),
-            notes=[str(note) for note in parsed.get("notes", [])],
-            classes=classes,
-        )
-    except HTTPException:
-        raise
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc.response.status_code} - {exc.response.text}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"OCR gagal untuk {filename}: {exc}") from exc
+        text = f.read().decode("utf-8-sig")
+    member = _member_from_text(text, code, division, generation, filename)
+    if not member.classes:
+        raise HTTPException(status_code=422, detail="File teks tidak memiliki baris jadwal yang dikenali.")
+    return member
 
 
 @router.post("/extract", response_model=ExtractionResponse)
@@ -256,7 +130,7 @@ async def extract_documents(files: list[UploadFile] = File(...)):
                 status_code=422,
                 detail=(
                     f"Nama file {filename or '(tanpa nama)'} tidak valid. Gunakan pola "
-                    "KODENAMA_DIVISI_ANGKATAN, contoh VAL_CW_21.pdf"
+                    "KODENAMA_DIVISI_ANGKATAN.txt, contoh VAL_CW_21.txt"
                 ),
             )
         division = match.group("division")

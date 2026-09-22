@@ -36,13 +36,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ApiError, apiDownload, apiPost, apiUpload } from "@/lib/api";
+import { ApiError, apiDownload, apiPost } from "@/lib/api";
 import {
   formatBytes,
   hasInvalidScheduleTimes,
   parseScheduleFilename,
   REQUIRED_DIVISIONS,
 } from "@/lib/files";
+import { parseTextSchedule } from "@/lib/textSchedule";
 import {
   clearAllLocalData,
   deleteHistory,
@@ -57,7 +58,6 @@ import type {
   BatchHistory,
   DayName,
   ExportRequest,
-  ExtractionResponse,
   MemberSchedule,
   PlotConfig,
   PlotRequest,
@@ -196,14 +196,7 @@ export default function Home() {
         if (cancelQueueRef.current) break;
         updateQueueItem(item.id, { status: "processing", error: undefined });
         try {
-          const formData = new FormData();
-          formData.append("files", item.file);
-          const response = await apiUpload<ExtractionResponse>(
-            "/roster/extract",
-            formData,
-          );
-          const member = response.members[0];
-          if (!member) throw new Error("Hasil OCR AI kosong");
+          const member = await parseTextSchedule(item.file, item.parsed);
           await putExtractionCache({
             hash: item.hash,
             member,
@@ -508,7 +501,7 @@ export default function Home() {
           <SectionHeading
             number="01"
             title="Upload jadwal"
-            description="Pola wajib KODENAMA_DIVISI_ANGKATAN — contoh VAL_CW_21.pdf. Divisi: RP, FG, VG, CW, IL, WM, PK, DG."
+            description="Pola wajib KODENAMA_DIVISI_ANGKATAN.txt — contoh VAL_CW_21.txt. Isi satu jadwal per baris."
           />
           <form
             data-testid="upload-form"
@@ -527,7 +520,8 @@ export default function Home() {
                   data-testid="upload-limits"
                   className="mt-1 text-xs text-slate-500"
                 >
-                  PDF, PNG, atau JPG · maksimal 12 MB/file · 20 file/pemilihan
+                  TXT · Senin | 08:00 | 10:00 | Nama Mata Kuliah · maksimal 20
+                  file/pemilihan
                 </div>
               </div>
               <div
@@ -555,7 +549,7 @@ export default function Home() {
                     data-testid="upload-file-input"
                     className="sr-only"
                     type="file"
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".txt"
                     multiple
                     onChange={(event) =>
                       void addFiles(Array.from(event.target.files ?? []))

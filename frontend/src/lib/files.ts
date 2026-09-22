@@ -1,7 +1,7 @@
 import type { ParsedFilename } from "@/types/roster";
 
 export const REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"] as const;
-const FILE_PATTERN = /^([A-Z0-9]+)_([A-Z0-9]+)_([0-9]{2})\.(pdf|png|jpg|jpeg)$/;
+const FILE_PATTERN = /^([A-Z0-9]+)_([A-Z0-9]+)_([0-9]{2})\.txt$/;
 
 export function parseScheduleFilename(filename: string): ParsedFilename {
   const match = FILE_PATTERN.exec(filename);
@@ -11,7 +11,7 @@ export function parseScheduleFilename(filename: string): ParsedFilename {
       division: "-",
       generation: "-",
       valid: false,
-      error: "Gunakan pola KODENAMA_DIVISI_ANGKATAN, contoh VAL_CW_21.pdf",
+      error: "Gunakan pola KODENAMA_DIVISI_ANGKATAN, contoh VAL_CW_21.txt",
     };
   }
   const [, code, division, generation] = match;
