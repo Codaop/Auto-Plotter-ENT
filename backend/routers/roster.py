@@ -79,8 +79,8 @@ async def _extract_schedule(
         f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
     )
 
-        # Use the lowest-cost Gemini model that supports image input.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
+    # Use the lowest-cost Gemini model that supports image input.
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
     payload = {
         "contents": [{
             "parts": [
@@ -91,12 +91,17 @@ async def _extract_schedule(
         "generationConfig": {
             "temperature": 0.1,
             "maxOutputTokens": 4096,
+            "responseMimeType": "application/json",
         }
     }
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(url, json=payload)
+            response = await client.post(
+                url,
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -110,7 +115,7 @@ async def _extract_schedule(
         if not parts:
             raise HTTPException(status_code=502, detail="Respons Gemini kosong")
 
-        text = parts[0].get("text", "")
+        text = "".join(str(part.get("text", "")) for part in parts)
         if not text:
             raise HTTPException(status_code=502, detail="Respons Gemini tidak berisi teks")
 
