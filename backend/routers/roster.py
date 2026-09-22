@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import os
@@ -79,8 +80,13 @@ async def _extract_schedule(
         f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
     )
 
-    # Use the lowest-cost Gemini model that supports image input.
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
+    models = [
+        model.strip()
+        for model in os.environ.get(
+            "GEMINI_OCR_MODELS", "gemini-3.5-flash-lite,gemini-2.5-flash-lite"
+        ).split(",")
+        if model.strip()
+    ]
     payload = {
         "contents": [{
             "parts": [
@@ -96,14 +102,33 @@ async def _extract_schedule(
     }
 
     try:
+        data = None
+        last_error = ""
         async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                url,
-                headers={"x-goog-api-key": api_key},
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
+            for model in models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                for attempt in range(3):
+                    response = await client.post(
+                        url,
+                        headers={"x-goog-api-key": api_key},
+                        json=payload,
+                    )
+                    if response.status_code in {429, 500, 503}:
+                        last_error = f"{model}: {response.status_code} - {response.text}"
+                        if attempt < 2:
+                            await asyncio.sleep(2**attempt)
+                            continue
+                        break
+                    if response.status_code >= 400:
+                        last_error = f"{model}: {response.status_code} - {response.text}"
+                        break
+                    data = response.json()
+                    break
+                if data is not None:
+                    break
+
+        if data is None:
+            raise HTTPException(status_code=503, detail=f"Semua model OCR sedang tidak tersedia: {last_error}")
 
         # Extract text from Gemini response
         candidates = data.get("candidates", [])
