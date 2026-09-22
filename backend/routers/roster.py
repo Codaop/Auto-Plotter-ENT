@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -6,13 +7,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
-from emergentintegrations.llm.chat import (
-    FileContentWithMimeType,
-    LlmChat,
-    StreamDone,
-    TextDelta,
-    UserMessage,
-)
+import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
@@ -66,33 +61,60 @@ async def _extract_schedule(
 ) -> MemberSchedule:
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="Kunci layanan OCR belum dikonfigurasi")
+        raise HTTPException(status_code=503, detail="Kunci layanan OCR (Gemini API) belum dikonfigurasi")
 
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"schedule-{code}-{Path(path).stem}",
-        system_message=(
-            "Anda adalah mesin ekstraksi jadwal kuliah. Baca tabel pada file dan keluarkan JSON valid saja. "
-            "Hari yang diizinkan: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Normalisasikan waktu ke HH:MM. "
-            "Jangan membuat jadwal yang tidak tampak. Jika ragu, tambahkan penjelasan pada notes."
-        ),
-    ).with_model("gemini", "gemini-3-flash-preview")
+    # Read file as base64
+    with open(path, "rb") as f:
+        file_data = base64.b64encode(f.read()).decode()
+
+    system_message = (
+        "Anda adalah mesin ekstraksi jadwal kuliah. Baca tabel pada file dan keluarkan JSON valid saja. "
+        "Hari yang diizinkan: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Normalisasikan waktu ke HH:MM. "
+        "Jangan membuat jadwal yang tidak tampak. Jika ragu, tambahkan penjelasan pada notes."
+    )
     prompt = (
         "Ekstrak semua jadwal kuliah dari lampiran. Kembalikan persis struktur: "
         '{"confidence":0.0,"notes":["..."],"classes":[{"day":"Senin","start_time":"08:00",'
         '"end_time":"10:00","course":"Nama Mata Kuliah"}]}. '
         f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
     )
-    attachment = FileContentWithMimeType(mime_type=mime_type, file_path=path)
-    pieces: list[str] = []
+
+    # Call Gemini API directly
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": f"{system_message}\n\n{prompt}"},
+                {"inline_data": {"mime_type": mime_type, "data": file_data}}
+            ]
+        }],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 4096,
+        }
+    }
+
     try:
-        async for event in chat.stream_message(UserMessage(text=prompt, file_contents=[attachment])):
-            if isinstance(event, TextDelta):
-                pieces.append(event.content)
-            elif isinstance(event, StreamDone) and event.content:
-                if not pieces:
-                    pieces.append(event.content)
-        parsed = _extract_json("".join(pieces))
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+        # Extract text from Gemini response
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise HTTPException(status_code=502, detail="Tidak ada respons dari Gemini API")
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        if not parts:
+            raise HTTPException(status_code=502, detail="Respons Gemini kosong")
+
+        text = parts[0].get("text", "")
+        if not text:
+            raise HTTPException(status_code=502, detail="Respons Gemini tidak berisi teks")
+
+        parsed = _extract_json(text)
         classes = [ClassSlot(**item) for item in parsed.get("classes", [])]
         return MemberSchedule(
             code=code,
@@ -105,6 +127,8 @@ async def _extract_schedule(
         )
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc.response.status_code} - {exc.response.text}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"OCR gagal untuk {filename}: {exc}") from exc
 
