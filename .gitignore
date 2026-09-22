@@ -89,8 +89,6 @@ android-sdk/
 # Keep runtime secrets local; commit only documented deployment templates.
 .env
 **/.env
-!.env.example
-!**/.env.example
 credentials.json
 *.key
 .credentials
