@@ -79,8 +79,8 @@ async def _extract_schedule(
         f"Identitas dari nama file adalah code={code}, division={division}, angkatan={generation}; jangan ubah identitas tersebut."
     )
 
-    # Use the lowest-cost Gemini model that supports image input.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={api_key}"
+        # Use the lowest-cost Gemini model that supports image input.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
     payload = {
         "contents": [{
             "parts": [
