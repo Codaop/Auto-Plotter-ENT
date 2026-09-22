@@ -43,7 +43,6 @@ import {
   parseScheduleFilename,
   REQUIRED_DIVISIONS,
 } from "@/lib/files";
-import { extractScheduleLocally } from "@/lib/localOcr";
 import {
   clearAllLocalData,
   deleteHistory,
@@ -197,26 +196,14 @@ export default function Home() {
         if (cancelQueueRef.current) break;
         updateQueueItem(item.id, { status: "processing", error: undefined });
         try {
-          let member: MemberSchedule;
-          if (item.file.type === "application/pdf") {
-            try {
-              const response = await apiUpload<ExtractionResponse>(
-                "/roster/extract",
-                (() => {
-                  const formData = new FormData();
-                  formData.append("files", item.file);
-                  return formData;
-                })(),
-              );
-              member = response.members[0];
-              if (!member)
-                throw new Error("MarkItDown tidak menemukan jadwal pada PDF");
-            } catch {
-              member = await extractScheduleLocally(item.file, item.parsed);
-            }
-          } else {
-            member = await extractScheduleLocally(item.file, item.parsed);
-          }
+          const formData = new FormData();
+          formData.append("files", item.file);
+          const response = await apiUpload<ExtractionResponse>(
+            "/roster/extract",
+            formData,
+          );
+          const member = response.members[0];
+          if (!member) throw new Error("Hasil OCR AI kosong");
           await putExtractionCache({
             hash: item.hash,
             member,

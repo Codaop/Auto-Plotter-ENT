@@ -129,16 +129,12 @@ async def _extract_schedule(
         try:
             text = await asyncio.to_thread(_convert_pdf, path)
             member = _member_from_text(text, code, division, generation, filename)
-            if not member.classes:
-                raise HTTPException(
-                    status_code=422,
-                    detail="PDF berhasil dibaca, tetapi tidak memiliki text layer jadwal yang dikenali; gunakan PDF berbasis teks atau gambar PNG/JPG.",
-                )
-            return member
+            if member.classes:
+                return member
         except HTTPException:
             raise
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"MarkItDown gagal membaca {filename}: {exc}") from exc
+        except Exception:
+            pass
 
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
@@ -184,10 +180,10 @@ async def _extract_schedule(
     try:
         data = None
         last_error = ""
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=105.0) as client:
             for model in models:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-                for attempt in range(3):
+                for attempt in range(2):
                     response = await client.post(
                         url,
                         headers={"x-goog-api-key": api_key},
@@ -195,8 +191,8 @@ async def _extract_schedule(
                     )
                     if response.status_code in {429, 500, 503}:
                         last_error = f"{model}: {response.status_code} - {response.text}"
-                        if attempt < 2:
-                            await asyncio.sleep(2**attempt)
+                        if attempt == 0:
+                            await asyncio.sleep(2)
                             continue
                         break
                     if response.status_code >= 400:

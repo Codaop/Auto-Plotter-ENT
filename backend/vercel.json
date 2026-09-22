@@ -3,7 +3,7 @@
   "framework": "fastapi",
   "functions": {
     "api/index.py": {
-      "maxDuration": 60,
+      "maxDuration": 120,
       "includeFiles": "{models,routers,lib}/**"
     }
   }
