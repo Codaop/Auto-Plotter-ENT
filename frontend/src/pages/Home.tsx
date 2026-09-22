@@ -264,7 +264,7 @@ export default function Home() {
     <div data-testid="autoplot-app" className="min-h-screen bg-[#f3f6f9] text-slate-800">
       <header data-testid="app-header" className="border-b border-[#0d365f] bg-[#134679] text-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <div data-testid="brand-lockup" className="min-w-0"><div data-testid="brand-name" className="truncate text-lg font-bold tracking-tight">AutoPlot Lab</div><div data-testid="batch-identity" className="truncate font-mono text-[10px] text-blue-100">Batch aktif: {batchId}</div></div>
+          <div data-testid="brand-lockup" className="min-w-0"><div data-testid="brand-name" className="truncate text-lg font-bold tracking-tight">AutoPlot Lab</div></div>
           <Button data-testid="history-button" type="button" variant="outline" onClick={() => setHistoryOpen(true)} className="shrink-0 border-white/30 bg-transparent px-3 text-white hover:bg-white/10 hover:text-white"><History className="size-4" />Riwayat ({histories.length})</Button>
         </div>
       </header>
@@ -285,8 +285,8 @@ export default function Home() {
             <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
               <div><div data-testid="upload-summary" className="text-sm font-semibold text-slate-900">Antrian file ({queue.length})</div><div data-testid="upload-limits" className="mt-1 text-xs text-slate-500">PDF, PNG, atau JPG · maksimal 12 MB/file · 20 file/pemilihan</div></div>
               <div data-testid="upload-batch-actions" className="grid grid-cols-2 gap-2 sm:flex">
-                <Button data-testid="new-batch-button" type="button" variant="outline" onClick={() => setClearOpen(true)} className="border-slate-300 px-3 text-slate-700 hover:bg-slate-50 hover:text-slate-900"><RotateCcw className="size-4" />Batch Baru / Clear</Button>
-                <label data-testid="upload-file-label" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-sm border border-[#134679] px-3 text-sm font-medium text-[#134679] hover:bg-blue-50"><Plus className="size-4" />Tambah file<input ref={fileInputRef} data-testid="upload-file-input" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple onChange={(event) => void addFiles(Array.from(event.target.files ?? []))} /></label>
+                <Button data-testid="new-batch-button" type="button" variant="outline" onClick={() => setClearOpen(true)} className="h-10 border-slate-300 px-4 text-slate-700 hover:bg-slate-50 hover:text-slate-900"><RotateCcw className="size-4" />Batch Baru / Clear</Button>
+                <label data-testid="upload-file-label" className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-sm border border-[#134679] px-4 text-sm font-medium text-[#134679] hover:bg-blue-50"><Plus className="size-4" />Tambah file<input ref={fileInputRef} data-testid="upload-file-input" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple onChange={(event) => void addFiles(Array.from(event.target.files ?? []))} /></label>
               </div>
             </div>
             <div data-testid="selected-files-list" className="divide-y divide-slate-200">
