@@ -1,7 +1,8 @@
 import type { ParsedFilename } from "@/types/roster";
 
 export const REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"] as const;
-const FILE_PATTERN = /^([A-Z0-9]+)_([A-Z0-9]+)_([0-9]{2})\.(txt|md|csv|json)$/i;
+export const SUPPORTED_TEXT_EXTENSIONS = ["txt", "md", "csv", "json"] as const;
+const FILE_PATTERN = /^([A-Z0-9]+)_([A-Z0-9]+)_([0-9]{2})\.([^.]*)$/i;
 
 export function parseScheduleFilename(filename: string): ParsedFilename {
   const match = FILE_PATTERN.exec(filename);
@@ -10,15 +11,26 @@ export function parseScheduleFilename(filename: string): ParsedFilename {
       code: "-",
       division: "-",
       generation: "-",
+      supported: false,
       valid: false,
-      error: "Gunakan pola KODENAMA_DIVISI_ANGKATAN, contoh VAL_CW_21.txt, .md, .csv, atau .json",
+      error: "Gunakan pola KODENAMA_DIVISI_ANGKATAN.ext",
     };
   }
-  const [, code, division, generation] = match;
+  const [, code, division, generation, extension] = match;
+  const normalizedExtension = extension.toLowerCase();
   if (!REQUIRED_DIVISIONS.includes(division as (typeof REQUIRED_DIVISIONS)[number])) {
-    return { code, division, generation, valid: false, error: `Divisi harus salah satu: ${REQUIRED_DIVISIONS.join(", ")}` };
+    return { code, division, generation, extension: normalizedExtension, supported: false, valid: false, error: `Divisi harus salah satu: ${REQUIRED_DIVISIONS.join(", ")}` };
   }
-  return { code, division, generation, valid: true };
+  const supported = SUPPORTED_TEXT_EXTENSIONS.includes(normalizedExtension as (typeof SUPPORTED_TEXT_EXTENSIONS)[number]);
+  return {
+    code,
+    division,
+    generation,
+    extension: normalizedExtension,
+    supported,
+    valid: true,
+    error: supported ? undefined : `Format .${normalizedExtension} belum didukung. Gunakan TXT, MD, CSV, atau JSON.`,
+  };
 }
 
 export function formatBytes(bytes: number): string {

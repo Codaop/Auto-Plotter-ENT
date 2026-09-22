@@ -71,12 +71,14 @@ export interface ExportRequest {
   plot: PlotResponse;
 }
 
-export type QueueStatus = "valid" | "invalid" | "duplicate" | "processing" | "done" | "error" | "cached";
+export type QueueStatus = "valid" | "invalid" | "unsupported" | "duplicate" | "processing" | "done" | "error" | "cached";
 
 export interface ParsedFilename {
   code: string;
   division: string;
   generation: string;
+  extension?: string;
+  supported: boolean;
   valid: boolean;
   error?: string;
 }

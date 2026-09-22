@@ -162,8 +162,12 @@ export default function Home() {
       const existing = next.find(
         (item) => item.file.name === file.name || item.hash === hash,
       );
-      const cached = parsed.valid ? await getExtractionCache(hash) : undefined;
+      const cached =
+        parsed.valid && parsed.supported
+          ? await getExtractionCache(hash)
+          : undefined;
       const tooLarge = file.size > 12 * 1024 * 1024;
+      const unsupported = parsed.valid && !parsed.supported;
       const item: QueuedFile = {
         id: crypto.randomUUID(),
         file,
@@ -172,11 +176,13 @@ export default function Home() {
         status:
           tooLarge || !parsed.valid
             ? "invalid"
-            : existing
-              ? "duplicate"
-              : cached
-                ? "cached"
-                : "valid",
+            : unsupported
+              ? "unsupported"
+              : existing
+                ? "duplicate"
+                : cached
+                  ? "cached"
+                  : "valid",
         error: tooLarge ? "Ukuran file melebihi 12 MB" : parsed.error,
         duplicateOf: existing?.id,
         cachedMember: cached?.member,
@@ -416,9 +422,7 @@ export default function Home() {
 
   const submitFiles = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const ready = queue.filter(
-      (item) => item.status === "valid" || item.status === "error",
-    );
+    const ready = queue.filter((item) => item.status === "valid");
     if (!ready.length)
       return toast.error("Tidak ada file baru yang siap diekstrak");
     extractionMutation.mutate(ready);
@@ -549,7 +553,6 @@ export default function Home() {
                     data-testid="upload-file-input"
                     className="sr-only"
                     type="file"
-                    accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json"
                     multiple
                     onChange={(event) =>
                       void addFiles(Array.from(event.target.files ?? []))
@@ -630,12 +633,7 @@ export default function Home() {
                 <Button
                   data-testid="extract-schedule-button"
                   type="submit"
-                  disabled={
-                    !queue.some(
-                      (item) =>
-                        item.status === "valid" || item.status === "error",
-                    )
-                  }
+                  disabled={!queue.some((item) => item.status === "valid")}
                   className="bg-[#134679] text-white hover:bg-[#0e385f] hover:text-white"
                 >
                   <Upload className="size-4" />
@@ -1086,7 +1084,11 @@ function QueueRow({
   onFresh: () => void;
 }) {
   const valid =
-    item.parsed.valid && item.status !== "invalid" && item.status !== "error";
+    item.parsed.valid &&
+    item.parsed.supported &&
+    item.status !== "invalid" &&
+    item.status !== "unsupported" &&
+    item.status !== "error";
   return (
     <div data-testid={`selected-file-${index}`} className="min-h-[92px] py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1121,7 +1123,9 @@ function QueueRow({
                   ? "Selesai"
                   : item.status === "cached"
                     ? "Tersedia di cache"
-                    : (item.error ?? item.status)}
+                    : item.status === "unsupported"
+                      ? "Format dipisahkan"
+                      : (item.error ?? item.status)}
             </span>
           </div>
         </div>
