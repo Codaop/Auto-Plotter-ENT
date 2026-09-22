@@ -2,6 +2,8 @@
 
 Gunakan satu repository GitHub dan buat dua project Vercel dari repository yang sama.
 
+Untuk deployment satu project memakai Vercel Services dari root repository, `/vercel.json` menjalankan backend dengan runtime Python dan entrypoint ASGI `api.index:app` relatif terhadap root service `backend` (file sumber: `backend/api/index.py`).
+
 ## 1. Project API
 
 1. Import repository ke Vercel dan pilih **Root Directory: `backend`**.

@@ -27,6 +27,7 @@ Belum ada autentikasi pada prototype ini.
 
 ## Deployment
 Satu repository mendukung dua project Vercel dengan root `frontend` dan `backend`. Frontend mempertahankan path relatif `/api` melalui Routing Middleware dan variabel `API_URL`. Detail ada di `DEPLOYMENT.md`.
+Root `vercel.json` juga mendukung satu project Vercel Services; service backend memakai runtime `python` dengan entrypoint ASGI `api.index:app` relatif terhadap root `backend`.
 
 ## Mobile navigation
 - Header mobile hanya memuat identitas AutoPlot Lab dan tombol `Riwayat (n)`.
