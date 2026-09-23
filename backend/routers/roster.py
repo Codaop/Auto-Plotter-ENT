@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from pydantic import ValidationError
 
 from lib.dates import today_iso
 from models.roster import (
@@ -58,9 +59,18 @@ def _extract_ai_members(raw: str, filename: str) -> list[MemberSchedule]:
         ) from exc
     members: list[MemberSchedule] = []
     for item in data.get("members", []):
-        classes = [ClassSlot(**slot) for slot in item.get("classes", [])]
+        classes: list[ClassSlot] = []
+        invalid_slots = 0
+        for slot in item.get("classes", []):
+            try:
+                classes.append(ClassSlot(**slot))
+            except ValidationError:
+                invalid_slots += 1
         if not classes:
             continue
+        notes = [str(note) for note in item.get("notes", [])]
+        if invalid_slots:
+            notes.append(f"{invalid_slots} jadwal diabaikan karena waktu tidak valid atau terbalik.")
         members.append(
             MemberSchedule(
                 code=str(item.get("code", item.get("name", "Anggota"))),
@@ -68,7 +78,7 @@ def _extract_ai_members(raw: str, filename: str) -> list[MemberSchedule]:
                 generation=str(item.get("generation", "00")),
                 source_file=filename,
                 confidence=float(item.get("confidence", 0.9)),
-                notes=[str(note) for note in item.get("notes", [])],
+                notes=notes,
                 classes=classes,
             )
         )
@@ -158,7 +168,7 @@ Pisahkan setiap jadwal berdasarkan identitas yang muncul di dalam isi, misalnya 
 Jangan gunakan nama file upload sebagai identitas anggota. Jika kode/divisi/angkatan hanya ada pada heading nama berkas di dalam teks, ekstrak dari sana.
 Kembalikan JSON valid saja dengan struktur persis:
 {{"members":[{{"code":"RSY","division":"DG","generation":"21","confidence":0.95,"notes":[],"classes":[{{"day":"Senin","start_time":"10:30","end_time":"12:10","course":"Pancasila"}}]}}]}}
-Hari harus salah satu: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Waktu harus HH:MM. Abaikan baris header tabel, catatan, citation, dosen, dan ruang. Jangan membuat jadwal yang tidak ada.
+Hari harus salah satu: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Waktu harus HH:MM dengan jam selesai lebih besar dari jam mulai. Jangan mengubah `Jam 1`, `Jam 2`, atau nomor periode menjadi waktu kalender; abaikan baris seperti itu jika tidak ada HH:MM. Abaikan baris header tabel, catatan, citation, dosen, dan ruang. Jangan membuat jadwal yang tidak ada.
 
 ISI FILE:
 {text}"""
