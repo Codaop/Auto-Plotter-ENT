@@ -50,7 +50,12 @@ def _extract_ai_members(raw: str, filename: str) -> list[MemberSchedule]:
     end = raw.rfind("}")
     if start < 0 or end < start:
         raise ValueError("respons AI tidak berisi JSON")
-    data = json.loads(raw[start : end + 1])
+    try:
+        data = json.loads(raw[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"respons AI terpotong atau bukan JSON valid pada baris {exc.lineno}, kolom {exc.colno}"
+        ) from exc
     members: list[MemberSchedule] = []
     for item in data.get("members", []):
         classes = [ClassSlot(**slot) for slot in item.get("classes", [])]
@@ -161,8 +166,41 @@ ISI FILE:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.0,
-            "maxOutputTokens": 8192,
+            "maxOutputTokens": 32768,
             "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "OBJECT",
+                "properties": {
+                    "members": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "code": {"type": "STRING"},
+                                "division": {"type": "STRING"},
+                                "generation": {"type": "STRING"},
+                                "confidence": {"type": "NUMBER"},
+                                "notes": {"type": "ARRAY", "items": {"type": "STRING"}},
+                                "classes": {
+                                    "type": "ARRAY",
+                                    "items": {
+                                        "type": "OBJECT",
+                                        "properties": {
+                                            "day": {"type": "STRING"},
+                                            "start_time": {"type": "STRING"},
+                                            "end_time": {"type": "STRING"},
+                                            "course": {"type": "STRING"},
+                                        },
+                                        "required": ["day", "start_time", "end_time", "course"],
+                                    },
+                                },
+                            },
+                            "required": ["code", "division", "generation", "classes"],
+                        },
+                    },
+                },
+                "required": ["members"],
+            },
         },
     }
     model = os.environ.get("GEMINI_TEXT_MODEL", "gemini-3.5-flash-lite")
@@ -171,7 +209,14 @@ ISI FILE:
         async with httpx.AsyncClient(timeout=55.0) as client:
             response = await client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
             response.raise_for_status()
-        parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        response_data = response.json()
+        candidate = response_data.get("candidates", [{}])[0]
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            raise HTTPException(
+                status_code=502,
+                detail="Respons AI terpotong karena terlalu banyak jadwal. Pecah file menjadi beberapa bagian lalu unggah ulang.",
+            )
+        parts = candidate.get("content", {}).get("parts", [])
         members = _extract_ai_members("".join(str(part.get("text", "")) for part in parts), filename)
         if not members:
             raise HTTPException(status_code=422, detail="AI tidak menemukan jadwal dalam file teks")
