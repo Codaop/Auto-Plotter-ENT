@@ -165,7 +165,7 @@ ISI FILE:
             "responseMimeType": "application/json",
         },
     }
-    model = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash-lite")
+    model = os.environ.get("GEMINI_TEXT_MODEL", "gemini-3.5-flash-lite")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
         async with httpx.AsyncClient(timeout=55.0) as client:
@@ -179,7 +179,10 @@ ISI FILE:
     except HTTPException:
         raise
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"AI text parsing error: {exc.response.status_code}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI text parsing error: {exc.response.status_code} - {exc.response.text}",
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Pembacaan file teks gagal: {exc}") from exc
 
