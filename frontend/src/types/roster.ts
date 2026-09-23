@@ -91,7 +91,7 @@ export interface QueuedFile {
   status: QueueStatus;
   error?: string;
   duplicateOf?: string;
-  cachedMember?: MemberSchedule;
+  cachedMembers?: MemberSchedule[];
 }
 
 export interface BatchHistory {
@@ -109,6 +109,6 @@ export interface BatchHistory {
 
 export interface ExtractionCacheEntry {
   hash: string;
-  member: MemberSchedule;
+  members: MemberSchedule[];
   updated_at: string;
 }

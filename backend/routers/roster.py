@@ -1,10 +1,12 @@
 import json
+import os
 import re
 import tempfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
@@ -24,12 +26,9 @@ from models.roster import (
 
 
 router = APIRouter(prefix="/roster", tags=["roster"])
-FILE_PATTERN = re.compile(
-    r"^(?P<code>[A-Z0-9]+)_(?P<division>[A-Z0-9]+)_(?P<generation>[0-9]{2})\.(?P<ext>txt|md|csv|json)$",
-    re.IGNORECASE,
-)
+FILE_PATTERN = re.compile(r"\.(?P<ext>[^.]+)$", re.IGNORECASE)
 REQUIRED_DIVISIONS = ["RP", "FG", "VG", "CW", "IL", "WM", "PK", "DG"]
-ALLOWED_MIME = {"text/plain", "text/markdown", "text/csv", "application/csv", "application/json"}
+SUPPORTED_TEXT_EXTENSIONS = {"txt", "md", "csv", "json"}
 MAX_FILE_BYTES = 12 * 1024 * 1024
 
 
@@ -44,6 +43,31 @@ def _clock(total_minutes: int) -> str:
 
 def _overlaps(start: int, end: int, class_slot: ClassSlot) -> bool:
     return start < _minutes(class_slot.end_time) and end > _minutes(class_slot.start_time)
+
+
+def _extract_ai_members(raw: str, filename: str) -> list[MemberSchedule]:
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("respons AI tidak berisi JSON")
+    data = json.loads(raw[start : end + 1])
+    members: list[MemberSchedule] = []
+    for item in data.get("members", []):
+        classes = [ClassSlot(**slot) for slot in item.get("classes", [])]
+        if not classes:
+            continue
+        members.append(
+            MemberSchedule(
+                code=str(item.get("code", item.get("name", "Anggota"))),
+                division=str(item.get("division", "-")),
+                generation=str(item.get("generation", "00")),
+                source_file=filename,
+                confidence=float(item.get("confidence", 0.9)),
+                notes=[str(note) for note in item.get("notes", [])],
+                classes=classes,
+            )
+        )
+    return members
 
 
 _DAY_ALIASES = {
@@ -108,7 +132,7 @@ def _member_from_text(text: str, code: str, division: str, generation: str, file
 
 async def _extract_schedule(
     path: str, mime_type: str, code: str, division: str, generation: str, filename: str
-) -> MemberSchedule:
+) -> list[MemberSchedule]:
     with open(path, "rb") as f:
         text = f.read().decode("utf-8-sig")
     if filename.lower().endswith(".json"):
@@ -118,10 +142,46 @@ async def _extract_schedule(
             f"{item.get('day', '')} | {item.get('start_time', '')} | {item.get('end_time', '')} | {item.get('course', '')}"
             for item in items if isinstance(item, dict)
         )
-    member = _member_from_text(text, code, division, generation, filename)
-    if not member.classes:
-        raise HTTPException(status_code=422, detail="File teks tidak memiliki baris jadwal yang dikenali.")
-    return member
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Kunci layanan AI belum dikonfigurasi")
+    if len(text) > 300_000:
+        raise HTTPException(status_code=413, detail="File teks terlalu besar untuk diproses AI")
+
+    prompt = f"""Anda adalah parser jadwal kuliah. Baca isi file teks berikut, termasuk tabel Markdown, CSV, atau JSON.
+Pisahkan setiap jadwal berdasarkan identitas yang muncul di dalam isi, misalnya heading `RSY_DG_21.jpg`, `Kelas: ...`, `Kode: ...`, atau blok dokumen bernomor.
+Jangan gunakan nama file upload sebagai identitas anggota. Jika kode/divisi/angkatan hanya ada pada heading nama berkas di dalam teks, ekstrak dari sana.
+Kembalikan JSON valid saja dengan struktur persis:
+{{"members":[{{"code":"RSY","division":"DG","generation":"21","confidence":0.95,"notes":[],"classes":[{{"day":"Senin","start_time":"10:30","end_time":"12:10","course":"Pancasila"}}]}}]}}
+Hari harus salah satu: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu. Waktu harus HH:MM. Abaikan baris header tabel, catatan, citation, dosen, dan ruang. Jangan membuat jadwal yang tidak ada.
+
+ISI FILE:
+{text}"""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 8192,
+            "responseMimeType": "application/json",
+        },
+    }
+    model = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash-lite")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    try:
+        async with httpx.AsyncClient(timeout=55.0) as client:
+            response = await client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
+            response.raise_for_status()
+        parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        members = _extract_ai_members("".join(str(part.get("text", "")) for part in parts), filename)
+        if not members:
+            raise HTTPException(status_code=422, detail="AI tidak menemukan jadwal dalam file teks")
+        return members
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"AI text parsing error: {exc.response.status_code}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Pembacaan file teks gagal: {exc}") from exc
 
 
 @router.post("/extract", response_model=ExtractionResponse)
@@ -135,23 +195,15 @@ async def extract_documents(files: list[UploadFile] = File(...)):
     warnings: list[str] = []
     for upload in files:
         filename = upload.filename or ""
-        match = FILE_PATTERN.fullmatch(filename)
-        if not match:
+        match = FILE_PATTERN.search(filename)
+        if not match or match.group("ext").lower() not in SUPPORTED_TEXT_EXTENSIONS:
             raise HTTPException(
                 status_code=422,
                 detail=(
                     f"Nama file {filename or '(tanpa nama)'} tidak valid. Gunakan pola "
-                    "KODENAMA_DIVISI_ANGKATAN.(txt|md|csv), contoh VAL_CW_21.txt"
+                    "Gunakan file teks TXT, MD, CSV, atau JSON. Identitas dibaca dari isi file."
                 ),
             )
-        division = match.group("division")
-        if division not in REQUIRED_DIVISIONS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Divisi {division} tidak valid. Pilih salah satu: {', '.join(REQUIRED_DIVISIONS)}",
-            )
-        if upload.content_type not in ALLOWED_MIME:
-            raise HTTPException(status_code=415, detail=f"Format {filename} tidak didukung")
         suffix = f".{match.group('ext').lower()}"
         with tempfile.TemporaryDirectory(prefix="autoplot-") as temp_dir:
             temp_path = str(Path(temp_dir) / f"source{suffix}")
@@ -162,17 +214,17 @@ async def extract_documents(files: list[UploadFile] = File(...)):
                     if total_bytes > MAX_FILE_BYTES:
                         raise HTTPException(status_code=413, detail=f"{filename} melebihi batas 12 MB")
                     temp_file.write(chunk)
-            member = await _extract_schedule(
+            extracted_members = await _extract_schedule(
                 temp_path,
                 upload.content_type,
-                match.group("code"),
-                division,
-                match.group("generation"),
+                "",
+                "",
+                "",
                 filename,
             )
-            members.append(member)
-            if member.confidence < 0.7:
-                warnings.append(f"Periksa ulang {filename}: confidence OCR rendah ({member.confidence:.0%})")
+            members.extend(extracted_members)
+            if any(member.confidence < 0.7 for member in extracted_members):
+                warnings.append(f"Periksa ulang hasil AI dari {filename}: confidence rendah")
     return ExtractionResponse(members=members, warnings=warnings)
 
 

@@ -36,14 +36,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ApiError, apiDownload, apiPost } from "@/lib/api";
+import { ApiError, apiDownload, apiPost, apiUpload } from "@/lib/api";
 import {
   formatBytes,
   hasInvalidScheduleTimes,
   parseScheduleFilename,
   REQUIRED_DIVISIONS,
 } from "@/lib/files";
-import { parseTextSchedule } from "@/lib/textSchedule";
 import {
   clearAllLocalData,
   deleteHistory,
@@ -185,7 +184,7 @@ export default function Home() {
                   : "valid",
         error: tooLarge ? "Ukuran file melebihi 12 MB" : parsed.error,
         duplicateOf: existing?.id,
-        cachedMember: cached?.member,
+        cachedMembers: cached?.members,
       };
       next.push(item);
     }
@@ -197,20 +196,27 @@ export default function Home() {
   const extractionMutation = useMutation({
     mutationFn: async (items: QueuedFile[]) => {
       cancelQueueRef.current = false;
-      const extracted: { item: QueuedFile; member: MemberSchedule }[] = [];
+      const extracted: { item: QueuedFile; members: MemberSchedule[] }[] = [];
       for (const item of items) {
         if (cancelQueueRef.current) break;
         updateQueueItem(item.id, { status: "processing", error: undefined });
         try {
-          const member = await parseTextSchedule(item.file, item.parsed);
+          const formData = new FormData();
+          formData.append("files", item.file);
+          const response = await apiUpload<{
+            members: MemberSchedule[];
+            warnings: string[];
+          }>("/roster/extract", formData);
+          const members = response.members;
+          if (!members.length) throw new Error("AI tidak menemukan jadwal");
           await putExtractionCache({
             hash: item.hash,
-            member,
+            members,
             updated_at: new Date().toISOString(),
           });
           updateQueueItem(item.id, { status: "done" });
-          extracted.push({ item, member });
-          member.notes.forEach((note) => toast.warning(note));
+          extracted.push({ item, members });
+          response.warnings.forEach((warning) => toast.warning(warning));
         } catch (error) {
           updateQueueItem(item.id, {
             status: "error",
@@ -227,12 +233,17 @@ export default function Home() {
           return [
             ...current,
             ...results
-              .map((result) => result.member)
-              .filter((member) => !sources.has(member.source_file)),
+              .flatMap((result) => result.members)
+              .filter(
+                (member) =>
+                  !sources.has(`${member.source_file}:${member.code}`),
+              ),
           ];
         });
         invalidateOutput(true);
-        toast.success(`${results.length} file selesai diekstrak`);
+        toast.success(
+          `${results.reduce((total, result) => total + result.members.length, 0)} jadwal anggota selesai dibaca`,
+        );
         document.getElementById("review")?.scrollIntoView({ block: "start" });
       } else if (cancelQueueRef.current) toast.info("Sisa antrian dibatalkan");
       else toast.error("Tidak ada file yang berhasil diekstrak");
@@ -240,14 +251,18 @@ export default function Home() {
   });
 
   const useCachedResult = (item: QueuedFile) => {
-    if (!item.cachedMember) return;
-    setSchedules((current) =>
-      current.some(
-        (member) => member.source_file === item.cachedMember?.source_file,
-      )
-        ? current
-        : [...current, item.cachedMember!],
-    );
+    if (!item.cachedMembers?.length) return;
+    setSchedules((current) => {
+      const existing = new Set(
+        current.map((member) => `${member.source_file}:${member.code}`),
+      );
+      return [
+        ...current,
+        ...(item.cachedMembers ?? []).filter(
+          (member) => !existing.has(`${member.source_file}:${member.code}`),
+        ),
+      ];
+    });
     updateQueueItem(item.id, { status: "done" });
     invalidateOutput(true);
   };
@@ -505,7 +520,7 @@ export default function Home() {
           <SectionHeading
             number="01"
             title="Upload jadwal"
-            description="Pola wajib KODENAMA_DIVISI_ANGKATAN — dukung TXT, MD, CSV, dan JSON."
+            description="Unggah file teks berisi satu atau banyak jadwal; identitas anggota dibaca dari isi file."
           />
           <form
             data-testid="upload-form"
@@ -524,8 +539,8 @@ export default function Home() {
                   data-testid="upload-limits"
                   className="mt-1 text-xs text-slate-500"
                 >
-                  TXT, MD, CSV, atau JSON · maksimal 20 file/pemilihan
-                  file/pemilihan
+                  File apa pun dapat dipilih; TXT, MD, CSV, dan JSON akan
+                  diproses · maksimal 20 file/pemilihan
                 </div>
               </div>
               <div
@@ -597,7 +612,9 @@ export default function Home() {
                             ? {
                                 ...entry,
                                 duplicateOf: undefined,
-                                status: entry.cachedMember ? "cached" : "valid",
+                                status: entry.cachedMembers?.length
+                                  ? "cached"
+                                  : "valid",
                               }
                             : entry,
                         ),
@@ -1090,7 +1107,7 @@ function QueueRow({
     item.status !== "unsupported" &&
     item.status !== "error";
   return (
-    <div data-testid={`selected-file-${index}`} className="min-h-[92px] py-3">
+    <div data-testid={`selected-file-${index}`} className="min-h-23 py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <span
           className={`grid size-8 shrink-0 place-items-center rounded-sm ${valid ? "bg-blue-50 text-[#134679]" : "bg-rose-50 text-rose-700"}`}
@@ -1109,16 +1126,14 @@ function QueueRow({
             className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500"
           >
             <span>{formatBytes(item.file.size)}</span>
-            {item.parsed.valid && (
+            {item.parsed.valid && item.parsed.supported && (
               <>
-                <span>Kode: {item.parsed.code}</span>
-                <span>Divisi: {item.parsed.division}</span>
-                <span>Angkatan: {item.parsed.generation}</span>
+                <span>Identitas dibaca dari isi file</span>
               </>
             )}
             <span className={valid ? "text-teal-700" : "text-rose-700"}>
               {item.status === "processing"
-                ? "Memproses OCR…"
+                ? "Memproses teks dengan AI…"
                 : item.status === "done"
                   ? "Selesai"
                   : item.status === "cached"
